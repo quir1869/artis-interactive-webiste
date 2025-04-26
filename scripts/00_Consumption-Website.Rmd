@@ -1,0 +1,139 @@
+---
+title: "Seafood Consumption Exploration"
+author: "Seafood Globalization Lab"
+runtime: shiny
+output:
+  html_document:
+    theme: 
+      package: bslib
+      version: 4
+      bootswatch: cosmo   # ← or journal, litera, darkly, etc.
+---
+```{r}
+library(shiny)
+library(bslib)
+library(arrow)
+library(rfishbase)
+library(duckdbfs)
+library(tidyverse)
+library(cowplot)
+library(here)
+library(ggridges)
+library(ggsankey)
+library(exploreARTIS)
+
+# Load data up front
+USA <- read_parquet(here("output", "USA.parquet"))
+consumption_joined <- read_parquet(here("output", "consumption_joined.parquet"))
+
+# Precompute your list of seafood types
+seafood_types <- consumption_joined %>%
+  filter(!is.na(dom_source),
+         !is.na(isscaap),
+         !str_detect(isscaap, "Multiple ISSCAAP groups"),
+         year == 2019) %>%
+  distinct(isscaap) %>% pull(isscaap)
+
+```
+
+```{r}
+# 1) Define UI with navbarPage -------------------------------------
+ui <- navbarPage(
+  title = "Seafood Explorer",
+  theme = bs_theme(version = 4, bootswatch = "cosmo"),
+  
+  tabPanel("About",
+           img(src=here("data","SGL_logo.png"), align = "right")),
+  
+  tabPanel("Most Consumed",
+           
+    fluidRow(
+      column(6,
+        h2("Most consumed seafood"),
+        plotOutput("plot_most_consumed")
+      ),
+      column(6,
+        h2("Where is our seafood come from?"),
+        plotOutput("plot_source")
+      )
+    )
+  ),
+  
+  tabPanel("Global Distributions",
+           h2("What does global seafood consumption look like?"),
+    sidebarLayout(
+      sidebarPanel(
+        selectInput("sel_food", "Food type:", 
+                    choices = seafood_types, 
+                    selected = "Salmons, trouts, smelts")
+      ),
+      mainPanel(
+        plotOutput("seafoodPlot", height = "600px", width = "600px")
+      )
+    )
+  )
+)
+
+# 2) Server stays the same, just hooked to output IDs ---------------
+server <- function(input, output, session) {
+  
+  output$plot_most_consumed <- renderPlot({
+    USA %>%
+      filter(!is.na(dom_source),
+             !is.na(isscaap),
+             !str_detect(isscaap, "Multiple ISSCAAP groups")) %>%
+      group_by(isscaap) %>%
+      summarize(sum = sum(live_weight_t)) %>%
+      slice_max(sum, n = 5) %>%
+      mutate(isscaap = fct_reorder(isscaap, sum)) %>%
+      ggplot(aes(x = sum, y = isscaap, fill = isscaap)) +
+      geom_col() +
+      scale_fill_manual(values = artis_palette(9)) +
+      theme_cowplot() +
+      labs(x = "Consumption (tons)", y = "", fill = "") +
+      guides(fill = "none")
+  })
+  
+  output$plot_source <- renderPlot({
+    USA %>%
+      filter(!is.na(dom_source),
+             !is.na(isscaap),
+             !str_detect(isscaap, "Multiple ISSCAAP groups")) %>%
+      group_by(dom_source, isscaap) %>%
+      summarize(sum = sum(live_weight_t)) %>%
+      mutate(dom_source = if_else(dom_source=="domestic","Domestic","Foreign")) %>%
+      arrange(-sum) %>%
+      top_n(5) %>%
+      ggplot(aes(x = sum, y = dom_source, fill = isscaap)) +
+      geom_col(position = "fill") +
+      scale_fill_manual(values = artis_palette(17)) +
+      theme_cowplot() +
+      labs(x = "Proportion of consumption", y = "", fill = "")
+  })
+  
+  output$seafoodPlot <- renderPlot({
+    consumption_joined %>%
+      filter(!is.na(dom_source),
+             !is.na(isscaap),
+             !str_detect(isscaap, "Multiple ISSCAAP groups"),
+             year == 2019,
+             str_detect(isscaap, input$sel_food)) %>%
+      add_region(col="consumer_iso3c", region.col.name="region") %>%
+      group_by(region) %>% add_count(region, name="region_count") %>%
+      filter(region_count > 3,
+             !is.na(region)) %>%
+      ggplot(aes(x = log(live_weight_t), y = region, fill = region)) +
+      geom_density_ridges(alpha = 0.4) +
+      scale_fill_manual(values = artis_palette(6)) +
+      theme_cowplot() +
+      guides(fill="none") +
+      labs(x = "Less → more consumption", y = "", 
+           title = paste(input$sel_food, "consumption")) +
+      theme(plot.title = element_text(hjust = 0.5))
+  }, height = 600, width = 600)
+}
+
+# 3) Launch the app -------------------------------------------------
+shinyApp(ui, server)
+
+```
