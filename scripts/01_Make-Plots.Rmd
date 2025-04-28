@@ -1,0 +1,263 @@
+---
+title: "Test Script"
+author: "Connor Quiroz"
+date: "2025-04-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(arrow)
+library(rfishbase)
+library(duckdbfs)
+library(rfishbase)
+library(tidyverse)
+library(cowplot)
+library(ggridges)
+
+
+# Load in packages needed for ARTIS
+library(devtools)
+library(tidytext)
+# devtools::install_github("davidsjoberg/ggsankey")
+library(ggsankey)
+# devtools::install_github("Seafood-Globalization-Lab/exploreARTIS@v1.0.0", dependencies = TRUE)
+library(exploreARTIS)
+
+# Map creation
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+library(plotly)
+
+# Load packages
+library(shiny)
+library(bslib)
+# library(arrow)
+# library(rfishbase)
+# library(duckdbfs)
+library(tidyverse)
+# library(cowplot)
+library(here)
+# library(ggridges)
+# devtools::install_github("davidsjoberg/ggsankey")
+# library(ggsankey)
+# devtools::install_github("Seafood-Globalization-Lab/exploreARTIS@v1.0.0", dependencies = TRUE)
+# library(exploreARTIS)
+# library(rnaturalearth)
+# library(rnaturalearthdata)
+# library(sf)
+library(plotly)
+
+# Function for creating map
+create_map <- function(data, country.col.name = "consumer_iso3c", fill = "prop_missing") {
+  world_map   <- ne_countries(scale = "medium", returnclass = "sf") %>%
+                 left_join(data, by = c("iso_a3" = country.col.name))
+  missing_ctry <- filter(world_map, is.na(!!sym(fill)))
+  present_ctry <- filter(world_map, !is.na(!!sym(fill)))
+  
+  ggplot() +
+    geom_sf(data = ocean, fill = "#ebf0f480") +
+    
+    # 1) Missing: white fill + BLACK border
+    geom_sf(
+      data      = missing_ctry,
+      aes(geometry = geometry),
+      fill      = "white",
+      color     = "gray80",
+      linewidth = 0.1        # thicker so it shows
+    ) +
+    
+    # 2) Present: color fill + WHITE border
+    geom_sf(
+      data      = present_ctry,
+      aes(fill   = !!sym(fill)),
+      color     = "white",
+      linewidth = 0.1
+    ) +
+    
+    scale_fill_gradient(low = "#b0d2ff", high = "#0d65d7", na.value = NA) +
+    coord_sf(crs = "+proj=robin") +
+    theme_minimal() +
+    labs(fill = "Aquatic animal/protein reliance") +
+    theme(
+      legend.position   = c(0.25, 0.08),
+      legend.direction  = "horizontal",
+      legend.background = element_rect(color = "black", fill = "white", size = 0.5),
+      legend.key.width  = unit(1.5, "cm"),
+      legend.ticks      = element_blank(),
+      legend.title      = element_text(size = 5, face = "bold")
+    ) +
+    guides(fill = guide_colorbar(title.position = "top", barwidth = 5))
+}
+```
+
+```{r consumption data}
+# Read in consumption file
+consumption <- read_parquet("../data/consumption/example_consumption_eez_2024_12_06.parquet")
+
+# Load in isscaap names
+sciname <- read.csv("../data/consumption/sciname.csv")
+
+# Join isscaap names to consumptio ndata
+consumption_joined <- left_join(consumption, sciname, by = c("sciname_hs_modified" = "sciname"))
+
+USA <- consumption_joined %>%
+  filter(year == 2019, consumer_iso3c == "USA")
+
+# Create USA Graphic
+USA_plot_1 <- USA %>%
+  filter(!is.na(dom_source),
+         !is.na(isscaap),
+         !str_detect(isscaap, "Multiple ISSCAAP groups")) %>%
+  group_by(isscaap) %>%
+  summarize(sum = sum(live_weight_t)) %>%
+  arrange(-sum) %>%
+  top_n(5) %>%
+  mutate(isscaap = fct_reorder(isscaap, sum)) %>%
+  ggplot(aes(x = sum, y = fct_reorder(isscaap, sum), fill = isscaap)) +
+  geom_col() +
+  scale_fill_manual(values = artis_palette(9)) +
+  theme_cowplot() +
+  labs(x = "Consumption (tons)", y = "", fill = "") +
+  guides(fill = "none") +
+  theme_cowplot()
+
+# Top USA seafood consumption by source
+USA_plot_2 <- USA %>%
+  filter(!is.na(dom_source),
+         !is.na(isscaap),
+         !str_detect(isscaap, "Multiple ISSCAAP groups")) %>%
+  group_by(dom_source, isscaap) %>%
+  summarize(sum = sum(live_weight_t)) %>%
+  arrange(-sum) %>%
+  top_n(5) %>%
+  ggplot(aes(x = sum, y = dom_source, fill = isscaap)) +
+  geom_col(position = "fill") +
+  scale_fill_manual(values = artis_palette(15)) +
+  theme_cowplot() +
+  labs(x = "Proportion of consumption", y = "", fill = "")
+  
+# Write to RDS
+write_rds(USA_plot_1, "../output/USA_plot_1.rds")
+write_rds(USA_plot_2, "../output/USA_plot_2.rds")
+
+# Produce density plots
+
+for (i in seafood_types) {
+  plot <- consumption_joined %>%
+  filter(!is.na(dom_source),
+         !is.na(isscaap),
+         !str_detect(isscaap, "Multiple ISSCAAP groups"),
+         year == 2019) %>%
+  group_by(consumer_iso3c, isscaap) %>%
+  summarize(sum = log(sum(live_weight_t)), .groups = "drop") %>%
+  filter(str_detect(isscaap, i)) %>%
+  add_region(col = "consumer_iso3c", region.col.name = "region") %>%
+  group_by(region) %>%
+  add_count(region, name="region_count") %>%
+  filter(region_count > 3,
+         !is.na(region)) %>%
+  ggplot(aes(x = sum, y = region, fill = region)) +
+  geom_density_ridges(position = "identity", alpha = 0.4) +
+  scale_fill_manual(values = artis_palette(6)) +
+  theme_cowplot() +
+  guides(fill = "none") +
+  labs(x = "Less → more consumption", y = "", title = i) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+  if (nrow(plot$data) == 0) {
+    next
+  }
+
+  # Save to RDS
+  saveRDS(plot, paste0("../output/worldwide_consumption/", i, ".rds"))
+}
+
+```
+
+```{r create map data}
+# Load in protein data
+protein <- read.csv("../data/protein_contribution/supply_importance_long.csv")
+
+
+
+
+protein_map <- suppressMessages(protein %>%
+                       filter(Element == "Protein supply quantity (g/capita/day)",
+                              habitat == "marine",
+                              method == "capture") %>%
+                       group_by(consumer_iso3c, year) %>%
+                       summarize(sum = sum(aa_reliance_pct)) %>%
+                       filter(year == 2019) %>%
+                       mutate(sum = sqrt(sum)) %>%
+                       create_map(fill = "sum") +
+                       labs(fill = "Aquatic animal/protein reliance") +
+                       theme(
+                         legend.position   = c(0.25, 0.08),
+                         legend.direction  = "horizontal",
+                         legend.background = element_rect(color = "black", fill = "white", size = 0.5),
+                         legend.key.width  = unit(1.5, "cm"),
+                         legend.ticks = element_blank(),
+                         legend.title = element_text(size = 5, face = "bold"),
+                         legend.text = element_blank()
+                       ) +
+                       guides(fill = guide_colorbar(title.position = "top",
+                                                    barwidth = 5,))) %>%
+      ggplotly()
+
+# Write to RDS
+write_rds(protein_map, "../output/protein_map.rds")
+```
+
+```{r}
+install.packages("rsconnect")
+library(rsconnect)
+
+# In shinyapps.io → Account → Tokens → Show API Token
+seafood_types <- c(
+  "Abalones, winkles, conchs",
+  "Carps, barbels and other cyprinids",
+  "Clams, cockles, arkshells",
+  "Cods, hakes, haddocks",
+  "Crabs, sea-spiders",
+  "Flounders, halibuts, soles",
+  "Freshwater molluscs",
+  "Herrings, sardines, anchovies",
+  "King crabs, squat-lobsters",
+  "Krill, planktonic crustaceans",
+  "Lobsters, spiny-rock lobsters",
+  "Miscellaneous aquatic invertebrates",
+  "Miscellaneous coastal fishes",
+  "Miscellaneous demersal fishes",
+  "Miscellaneous diadromous fishes",
+  "Miscellaneous freshwater fishes",
+  "Miscellaneous marine crustaceans",
+  "Miscellaneous pelagic fishes",
+  "Mussels",
+  "Oysters",
+  "River eels",
+  "Salmons, trouts, smelts",
+  "Scallops, pectens",
+  "Sea-squirts and other tunicates",
+  "Sea-urchins and other echinoderms",
+  "Shads",
+  "Sharks, rays, chimaeras",
+  "Shrimps, prawns",
+  "Squids, cuttlefishes, octopuses",
+  "Sturgeons, paddlefishes",
+  "Tilapias and other cichlids",
+  "Tunas, bonitos, billfishes")
+
+# write to rds
+write_rds(seafood_types, "../output/seafood_types.rds")
+```
+
+```{r}
+rsconnect::showLogs(
+  appName   = "SeafoodExplorer",
+  account   = "quir1869",
+  entries = 50
+)
+```
+

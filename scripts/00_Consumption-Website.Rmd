@@ -9,7 +9,7 @@ output:
       version: 4
       bootswatch: cosmo   # ← or journal, litera, darkly, etc.
 ---
-```{r}
+```{r, echo = FALSE}
 library(shiny)
 library(bslib)
 library(arrow)
@@ -21,10 +21,15 @@ library(here)
 library(ggridges)
 library(ggsankey)
 library(exploreARTIS)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+library(plotly)
 
 # Load data up front
 USA <- read_parquet(here("output", "USA.parquet"))
 consumption_joined <- read_parquet(here("output", "consumption_joined.parquet"))
+protein <- read.csv(here("output","supply_importance_long.csv"))
 
 # Precompute your list of seafood types
 seafood_types <- consumption_joined %>%
@@ -33,45 +38,175 @@ seafood_types <- consumption_joined %>%
          !str_detect(isscaap, "Multiple ISSCAAP groups"),
          year == 2019) %>%
   distinct(isscaap) %>% pull(isscaap)
-
 ```
 
-```{r}
+```{r initialize map function}
+create_map <- function(data, country.col.name = "consumer_iso3c", fill = "prop_missing") {
+  world_map   <- ne_countries(scale = "medium", returnclass = "sf") %>%
+                 left_join(data, by = c("iso_a3" = country.col.name))
+  missing_ctry <- filter(world_map, is.na(!!sym(fill)))
+  present_ctry <- filter(world_map, !is.na(!!sym(fill)))
+  
+  ggplot() +
+    geom_sf(data = ocean, fill = "#ebf0f480") +
+    
+    # 1) Missing: white fill + BLACK border
+    geom_sf(
+      data      = missing_ctry,
+      aes(geometry = geometry),
+      fill      = "white",
+      color     = "gray80",
+      linewidth = 0.1        # thicker so it shows
+    ) +
+    
+    # 2) Present: color fill + WHITE border
+    geom_sf(
+      data      = present_ctry,
+      aes(fill   = !!sym(fill)),
+      color     = "white",
+      linewidth = 0.1
+    ) +
+    
+    scale_fill_gradient(low = "#b0d2ff", high = "#0d65d7", na.value = NA) +
+    coord_sf(crs = "+proj=robin") +
+    theme_minimal() +
+    labs(fill = "Aquatic animal/protein reliance") +
+    theme(
+      legend.position   = c(0.25, 0.08),
+      legend.direction  = "horizontal",
+      legend.background = element_rect(color = "black", fill = "white", size = 0.5),
+      legend.key.width  = unit(1.5, "cm"),
+      legend.ticks      = element_blank(),
+      legend.title      = element_text(size = 5, face = "bold")
+    ) +
+    guides(fill = guide_colorbar(title.position = "top", barwidth = 5))
+}
+```
+
+
+```{r, echo = FALSE}
+shiny::addResourcePath("images", here::here("data"))
 # 1) Define UI with navbarPage -------------------------------------
 ui <- navbarPage(
   title = "Seafood Explorer",
   theme = bs_theme(version = 4, bootswatch = "cosmo"),
   
-  tabPanel("About",
-           img(src=here("data","SGL_logo.png"), align = "right")),
+  header = tags$head(
+  tags$style(HTML("
+    /* 1) gradient on the navbar itself */
+    .navbar {
+      position: relative;  /* so ::after can position itself */
+      background: linear-gradient(
+        -45deg,
+        white 0%,
+        white 33%,
+        #0d64d7 33%,
+        #0d64d7 100%
+      ) !important;
+    }
+  ")),
+),
+
+tags$img(
+      src   = "images/ARTIS_logo.png", 
+      style = paste(
+        "position: absolute;",
+        "top:    10px;",           # flush with top of wrapper
+        "right:  20px;",           # flush with right edge
+        "height: 30px;    ",    # adjust size
+        "z-index: 2000;  ",     # > any navbar z-index
+        "pointer-events: none;" # non-clickable
+      )
+    ),
+  
+ tabPanel("About",
+  div(
+    style = "text-align: center; padding: 20px; max-width: 800px; margin: 0 auto;",
+
+    img(
+      src = "images/SGL_logo.png", 
+      style = "max-width: 300px; height: auto; margin-bottom: 15px;"
+    ),
+
+    h3("About the ARTIS Database"),
+
+    p(style = "text-align: center;",
+      "Seafood plays an important role in global food security, providing nearly 20% of global animal protein and supplying essential fatty acids and micronutrients. Seafood is also among the most highly-traded foods and the seafood sector is evolving with the rapid growth in aquaculture, geographical shifts in trade, and increasing commoditization and vertical integration. This research group brings together global trade data, local consumption data, and environmental impact data to understand the opportunities and risks of seafood globalization for sustainable production and food security."
+    )
+  )),
   
   tabPanel("Most Consumed",
-           
-    fluidRow(
-      column(6,
+  fluidRow(
+    style = "display: flex; align-items: center; min-height: 70vh;",  # 👈 makes the row vertically centered
+
+    column(6,
+      div(
+        style = "text-align: center;",
         h2("Most consumed seafood"),
         plotOutput("plot_most_consumed")
-      ),
-      column(6,
-        h2("Where is our seafood come from?"),
+      )
+    ),
+
+    column(6,
+      div(
+        style = "text-align: center;",
+        h2("Where does our seafood come from?"),
         plotOutput("plot_source")
       )
     )
-  ),
-  
+  )
+),
+
   tabPanel("Global Distributions",
-           h2("What does global seafood consumption look like?"),
-    sidebarLayout(
-      sidebarPanel(
-        selectInput("sel_food", "Food type:", 
-                    choices = seafood_types, 
-                    selected = "Salmons, trouts, smelts")
-      ),
-      mainPanel(
-        plotOutput("seafoodPlot", height = "600px", width = "600px")
+           fluidRow(
+  column(12, align = "center",
+    h2("What does global seafood consumption look like?")
+  )
+),
+    fluidRow(
+  # 4-column wide input panel, flex-centered
+  column(
+    4,
+    style = "
+      background-color: #f8f9fa;
+      padding: 15px;
+      display: flex;
+      justify-content: center;  /* horizontal centering */
+      align-items: center;      /* vertical centering */
+      height: 75vh;             /* match plot height */
+    ",
+    # you can drop the wellPanel if you like, or keep it for styling
+    wellPanel(
+      style = "text-align: center; width: 100%;",
+      h4("Food type:"),
+      selectInput(
+        "sel_food", 
+        label    = NULL,
+        choices  = seafood_types, 
+        selected = "Salmons, trouts, smelts"
       )
     )
+  ),
+
+  # 8-column wide plot area
+  column(
+    8,
+    plotOutput(
+      "seafoodPlot",
+      height = "75vh", 
+      width  = "75%"
+    )
   )
+)
+
+  ),
+  tabPanel("Protein reliance",
+           fluidRow(
+             style = "display: flex; align-items: center; min-height: 70vh;",
+             plotlyOutput("plot_protein_reliance")
+             )
+           )
+
 )
 
 # 2) Server stays the same, just hooked to output IDs ---------------
@@ -130,10 +265,35 @@ server <- function(input, output, session) {
       labs(x = "Less → more consumption", y = "", 
            title = paste(input$sel_food, "consumption")) +
       theme(plot.title = element_text(hjust = 0.5))
-  }, height = 600, width = 600)
+  })
+  
+  output$plot_protein_reliance <- renderPlotly({
+    
+suppressMessages(protein %>%
+  filter(Element == "Protein supply quantity (g/capita/day)",
+         habitat == "marine",
+         method == "capture") %>%
+  group_by(consumer_iso3c, year) %>%
+  summarize(sum = sum(aa_reliance_pct)) %>%
+  filter(year == 2019) %>%
+  mutate(sum = sqrt(sum)) %>%
+  create_map(fill = "sum") +
+  labs(fill = "Aquatic animal/protein reliance") +
+  theme(
+    legend.position   = c(0.25, 0.08),
+    legend.direction  = "horizontal",
+    legend.background = element_rect(color = "black", fill = "white", size = 0.5),
+    legend.key.width  = unit(1.5, "cm"),
+    legend.ticks = element_blank(),
+    legend.title = element_text(size = 5, face = "bold"),
+    legend.text = element_blank()
+  ) +
+guides(fill = guide_colorbar(title.position = "top",
+                             barwidth = 5,))) %>%
+      ggplotly()
+  })
 }
 
 # 3) Launch the app -------------------------------------------------
 shinyApp(ui, server)
-
 ```

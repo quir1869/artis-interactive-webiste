@@ -43,3 +43,6 @@
 # Ignore renv cache and library
 renv/library/
 renv/cache/
+
+# Ignore extra folders
+/output/
