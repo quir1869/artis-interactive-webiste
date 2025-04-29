@@ -105,6 +105,8 @@ consumption_joined <- left_join(consumption, sciname, by = c("sciname_hs_modifie
 USA <- consumption_joined %>%
   filter(year == 2019, consumer_iso3c == "USA")
 
+write_parquet(USA, "../data/USA.parquet")
+
 # Create USA Graphic
 USA_plot_1 <- USA %>%
   filter(!is.na(dom_source),
@@ -252,12 +254,3 @@ seafood_types <- c(
 # write to rds
 write_rds(seafood_types, "../output/seafood_types.rds")
 ```
-
-```{r}
-rsconnect::showLogs(
-  appName   = "SeafoodExplorer",
-  account   = "quir1869",
-  entries = 50
-)
-```
-

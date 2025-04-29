@@ -60,6 +60,7 @@ ui <- navbarPage(
   theme = bs_theme(version = 4, bootswatch = "cosmo"),
   
   header = tags$head(
+    tags$link(rel = "icon", type = "image/png", href = "images/favicon.png"),
     tags$style(HTML("
     /* 1) gradient on the navbar itself */
     .navbar {
@@ -89,17 +90,17 @@ ui <- navbarPage(
   
   tabPanel("About",
            div(
-             style = "text-align: center; padding: 20px; max-width: 800px; margin: 0 auto;",
+             style = "text-align: center; padding: 0px; max-width: 850px; margin: 0 auto;",
              
              img(
                src = "images/SGL_logo.png", 
-               style = "max-width: 300px; height: auto; margin-bottom: 15px;"
+               style = "max-width: 300px; height: auto; margin-bottom: 0px;"
              ),
              
              h3("About the ARTIS Database"),
              
              p(style = "text-align: center;",
-               "Seafood plays an important role in global food security, providing nearly 20% of global animal protein and supplying essential fatty acids and micronutrients. Seafood is also among the most highly-traded foods and the seafood sector is evolving with the rapid growth in aquaculture, geographical shifts in trade, and increasing commoditization and vertical integration. This research group brings together global trade data, local consumption data, and environmental impact data to understand the opportunities and risks of seafood globalization for sustainable production and food security."
+               "Food systems have become increasingly globalized, with over a quarter of all food now traded internationally. Seafood is among the most highly traded foods and it is becoming increasingly globalized, with trade doubling in recent decades. At the same time, seafood is now widely recognized as a critical source of nutrition. Thus, social and environmental threats to local seafood production, including environmental extremes, price impacts of market integration, networked risks, and increased availability of processed foods, must be evaluated in the context of global trade. These issues are paralleled by similar questions for other natural resources and are central to global food systems research. However, our collective understanding of the environmental and human outcomes of food system globalization is limited by a fundamental gap between production and trade data. We bridge this gap in the Aquatic Resource Trade in Species (ARTIS) database by providing the first global estimates of seafood species and nutrient trade flows from 1996–2020."
              )
            )),
   
@@ -169,10 +170,15 @@ ui <- navbarPage(
            
   ),
   tabPanel("Protein reliance",
-           fluidRow(
-             style = "display: flex; align-items: center; min-height: 70vh;",
-             plotlyOutput("plot_protein_reliance")
-           )
+           div(
+             div(
+               style = "text-align: center;",
+               h3("How reliant are countries on seafood for protein?")),
+             fluidRow(
+               style = "display: flex; align-items: center; min-height: 70vh;",
+               plotlyOutput("plot_protein_reliance")
+             ))
+           
   )
   
 )
