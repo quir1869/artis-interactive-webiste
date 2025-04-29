@@ -14,6 +14,7 @@ library(rfishbase)
 library(tidyverse)
 library(cowplot)
 library(ggridges)
+library(scales)
 
 
 # Load in packages needed for ARTIS
@@ -37,7 +38,7 @@ library(bslib)
 # library(rfishbase)
 # library(duckdbfs)
 library(tidyverse)
-# library(cowplot)
+library(cowplot)
 library(here)
 # library(ggridges)
 # devtools::install_github("davidsjoberg/ggsankey")
@@ -106,9 +107,10 @@ USA <- consumption_joined %>%
   filter(year == 2019, consumer_iso3c == "USA")
 
 write_parquet(USA, "../data/USA.parquet")
+USA <- read_parquet("../data/USA.parquet")
 
 # Create USA Graphic
-USA_plot_1 <- USA %>%
+(USA_plot_1 <- USA %>%
   filter(!is.na(dom_source),
          !is.na(isscaap),
          !str_detect(isscaap, "Multiple ISSCAAP groups")) %>%
@@ -123,23 +125,46 @@ USA_plot_1 <- USA %>%
   theme_cowplot() +
   labs(x = "Consumption (tons)", y = "", fill = "") +
   guides(fill = "none") +
-  theme_cowplot()
+  theme_cowplot() +
+    scale_x_continuous(
+    labels = label_number(
+      scale  = 1e-3,    # divide values by 1,000
+      suffix = "k"      # append “k”
+    )
+    ))
 
 # Top USA seafood consumption by source
-USA_plot_2 <- USA %>%
+
+(USA_plot_2 <- USA %>%
   filter(!is.na(dom_source),
          !is.na(isscaap),
          !str_detect(isscaap, "Multiple ISSCAAP groups")) %>%
   group_by(dom_source, isscaap) %>%
-  summarize(sum = sum(live_weight_t)) %>%
-  arrange(-sum) %>%
-  top_n(5) %>%
-  ggplot(aes(x = sum, y = dom_source, fill = isscaap)) +
-  geom_col(position = "fill") +
-  scale_fill_manual(values = artis_palette(15)) +
+  summarize(individual_sum = sum(live_weight_t)) %>%
+  group_by(isscaap) %>%
+  mutate(total_sum = sum(individual_sum)) %>%
+  group_by(dom_source) %>%
+  slice_max(total_sum, n = 5) %>%
+  mutate(prop = individual_sum / total_sum) %>%
+  mutate(isscaap = fct_reorder(isscaap, -prop, .fun = max),
+         prop = 100 * prop,
+         dom_source = factor(dom_source, levels = c("foreign", "domestic")),
+         isscaap = factor(isscaap, levels = c("Miscellaneous coastal fishes",
+                                              "Tunas, bonitos, billfishes",
+                                              "Herrings, sardines, anchovies",
+                                              "Shrimps, prawns",
+                                              "Cods, hakes, haddocks"))) %>%
+  ggplot(aes(y = isscaap, x = prop, fill = dom_source)) +
+  geom_col() +
   theme_cowplot() +
-  labs(x = "Proportion of consumption", y = "", fill = "")
-  
+  labs(x = "% of consumed food group", y = "", fill = "Domestic source") +
+  theme(legend.position = "bottom") +
+    scale_fill_manual(
+  name   = "Domestic source",
+  values = setNames(artis_palette(3), c("foreign","domestic")),
+  breaks = c("domestic","foreign")    # ← domestic first, then foreign
+))
+
 # Write to RDS
 write_rds(USA_plot_1, "../output/USA_plot_1.rds")
 write_rds(USA_plot_2, "../output/USA_plot_2.rds")
