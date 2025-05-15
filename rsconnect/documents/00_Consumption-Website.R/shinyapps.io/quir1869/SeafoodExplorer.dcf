@@ -5,6 +5,6 @@ account: quir1869
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 14623915
-bundleId: 10285498
+bundleId: 10288331
 url: https://quir1869.shinyapps.io/SeafoodExplorer/
 version: 1
