@@ -103,6 +103,12 @@ sciname <- read.csv("../data/consumption/sciname.csv")
 # Join isscaap names to consumptio ndata
 consumption_joined <- left_join(consumption, sciname, by = c("sciname_hs_modified" = "sciname"))
 
+consumption_joined <- consumption_joined %>%
+  filter(year == 2019,
+         !is.na(dom_source),
+         !is.na(isscaap),
+         !str_detect(isscaap, "Multiple ISSCAAP groups"))
+
 USA <- consumption_joined %>%
   filter(year == 2019, consumer_iso3c == "USA")
 
@@ -191,7 +197,9 @@ for (i in seafood_types) {
   theme_cowplot() +
   guides(fill = "none") +
   labs(x = "Less → more consumption", y = "", title = i) +
-  theme(plot.title = element_text(hjust = 0.5))
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
 
   if (nrow(plot$data) == 0) {
     next
@@ -200,7 +208,7 @@ for (i in seafood_types) {
   # Save to RDS
   saveRDS(plot, paste0("../output/worldwide_consumption/", i, ".rds"))
 }
-
+readRDS("../output/worldwide_consumption/Herrings, sardines, anchovies.rds")
 ```
 
 ```{r create map data}
