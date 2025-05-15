@@ -111,7 +111,7 @@ ui <- navbarPage(
              column(6,
                     div(
                       style = "text-align: center;",
-                      h2("Most consumed seafood"),
+                      h1("Most consumed seafood"),
                       plotOutput("plot_most_consumed")
                     )
              ),
@@ -119,7 +119,7 @@ ui <- navbarPage(
              column(6,
                     div(
                       style = "text-align: center;",
-                      h2("Where does our seafood come from?"),
+                      h1("Where does our seafood come from?"),
                       plotOutput("plot_source")
                     )
              )
@@ -129,7 +129,7 @@ ui <- navbarPage(
   tabPanel("Global Distributions",
            fluidRow(
              column(12, align = "center",
-                    h2("What does global seafood consumption look like?")
+                    h1("What does global seafood consumption look like?")
              )
            ),
            fluidRow(
@@ -173,7 +173,7 @@ ui <- navbarPage(
            div(
              div(
                style = "text-align: center;",
-               h3("How reliant are countries on seafood for protein?")),
+               h1("How reliant are countries on seafood for protein?")),
              fluidRow(
                style = "display: flex; align-items: center; min-height: 70vh;",
                plotlyOutput("plot_protein_reliance")

@@ -77,20 +77,28 @@ create_map <- function(data, country.col.name = "consumer_iso3c", fill = "prop_m
       linewidth = 0.1
     ) +
     
-    scale_fill_gradient(low = "#b0d2ff", high = "#0d65d7", na.value = NA) +
+    scale_fill_viridis_c(option = "plasma",na.value = NA) +
     coord_sf(crs = "+proj=robin") +
     theme_minimal() +
-    labs(fill = "Aquatic animal/protein reliance") +
-    theme(
-      legend.position   = c(0.25, 0.08),
-      legend.direction  = "horizontal",
-      legend.background = element_rect(color = "black", fill = "white", size = 0.5),
-      legend.key.width  = unit(1.5, "cm"),
-      legend.ticks      = element_blank(),
-      legend.title      = element_text(size = 5, face = "bold")
-    ) +
-    guides(fill = guide_colorbar(title.position = "top", barwidth = 5))
+    labs(fill = "Aquatic animal/protein reliance")
+    # theme(
+    #   legend.position   = c(0.25, 0.08),
+    #   legend.direction  = "horizontal",
+    #   legend.background = element_rect(color = "black", fill = "white", size = 0.5),
+    #   legend.key.width  = unit(1.5, "cm"),
+    #   legend.ticks      = element_blank(),
+    #   legend.title      = element_text(size = 5, face = "bold")
+    # ) +
+    # guides(fill = guide_colorbar(title.position = "top", barwidth = 5))
 }
+
+# Get ocean
+ocean <- ne_download(
+  scale       = "medium",
+  type        = "ocean",
+  category    = "physical",
+  returnclass = "sf"
+)
 ```
 
 ```{r consumption data}
@@ -218,28 +226,33 @@ protein <- read.csv("../data/protein_contribution/supply_importance_long.csv")
 
 
 
-protein_map <- suppressMessages(protein %>%
-                       filter(Element == "Protein supply quantity (g/capita/day)",
-                              habitat == "marine",
-                              method == "capture") %>%
-                       group_by(consumer_iso3c, year) %>%
-                       summarize(sum = sum(aa_reliance_pct)) %>%
-                       filter(year == 2019) %>%
-                       mutate(sum = sqrt(sum)) %>%
-                       create_map(fill = "sum") +
-                       labs(fill = "Aquatic animal/protein reliance") +
-                       theme(
-                         legend.position   = c(0.25, 0.08),
-                         legend.direction  = "horizontal",
-                         legend.background = element_rect(color = "black", fill = "white", size = 0.5),
-                         legend.key.width  = unit(1.5, "cm"),
-                         legend.ticks = element_blank(),
-                         legend.title = element_text(size = 5, face = "bold"),
-                         legend.text = element_blank()
-                       ) +
-                       guides(fill = guide_colorbar(title.position = "top",
-                                                    barwidth = 5,))) %>%
-      ggplotly()
+protein_map <- suppressMessages(
+  protein %>%
+    filter(Element == "Protein supply quantity (g/capita/day)",
+           habitat == "marine",
+           method == "capture") %>%
+    group_by(consumer_iso3c, year) %>%
+    summarize(Reliance = sum(aa_reliance_pct)) %>%
+    filter(year == 2019) %>%
+    mutate(Reliance = round(sqrt(Reliance), 2)) %>%
+    create_map(fill = "Reliance") +
+    labs(fill = "AA protein reliance")  # Label for colorbar
+)
+
+# Convert to plotly
+protein_plotly <- ggplotly(protein_map)
+
+# Update the colorbar (NOT the legend!) for continuous variables
+(protein_plotly <- protein_plotly %>%
+  layout(coloraxis = list(
+           colorbar = list(
+             title = list(
+               text = "Protein reliance",
+               font = list(size = 18)
+             )
+           )
+         )
+  ))
 
 # Write to RDS
 write_rds(protein_map, "../output/protein_map.rds")
