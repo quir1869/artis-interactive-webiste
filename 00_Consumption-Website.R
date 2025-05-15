@@ -170,15 +170,27 @@ ui <- navbarPage(
            
   ),
   tabPanel("Protein reliance",
+           # 1) Tighten up the header margins
            div(
-             div(
-               style = "text-align: center;",
-               h1("How reliant are countries on seafood for protein?")),
-             fluidRow(
-               style = "display: flex; align-items: center; min-height: 70vh;",
-               plotlyOutput("plot_protein_reliance")
-             ))
+             style = "text-align: center; margin: 5px 0 5px 0;",  # top 5px, bottom 5px
+             h1(
+               "How reliant are countries on seafood for protein?",
+               style = "margin: 0; padding: 0;"                     # remove any h1 margin
+             )
+           ),
            
+           # 2) Remove extra padding on the fluidRow
+           fluidRow(
+             style = "margin-top: 0; padding-top: 0;",
+             column(
+               12,
+               plotlyOutput(
+                 "plot_protein_reliance",
+                 width  = "100%",
+                 height = "80vh"
+               )
+             )
+           )
   )
   
 )

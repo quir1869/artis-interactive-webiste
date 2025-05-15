@@ -208,6 +208,8 @@ for (i in seafood_types) {
   theme(plot.title = element_text(hjust = 0.5),
         axis.text.x = element_blank(),
         axis.ticks.x = element_blank())
+    
+  print(plot)
 
   if (nrow(plot$data) == 0) {
     next
@@ -236,7 +238,7 @@ protein_map <- suppressMessages(
     filter(year == 2019) %>%
     mutate(Reliance = round(sqrt(Reliance), 2)) %>%
     create_map(fill = "Reliance") +
-    labs(fill = "AA protein reliance")  # Label for colorbar
+    labs(fill = "Protein Reliance")  # Label for colorbar
 )
 
 # Convert to plotly
